@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="微信在线点菜，选好菜一键复制菜单发给店家即可下单">
+<title>微信点菜</title>
+
+<script>
+/* ===== CONFIG-START：菜单数据已独立到 menu.js（用「菜品后台管理页」修改，刷新即生效）===== */
+/* 用 JS 引入，file:// 双击也能用；带时间戳参数击穿浏览器缓存（专治“保存成功但页面不变”） */
+document.write('<scr'+'ipt src="menu.js?t=' + Date.now() + '" onerror="__menuFallback()"><\/scr'+'ipt>');
+function __menuFallback(){ var s=document.createElement('script'); s.src='menu.js'; document.head.appendChild(s); }
+/* ===== CONFIG-END ===== */
+</script>
+
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background: #4a100d;
+  color: #33241a;
+  -webkit-font-smoothing: antialiased;
+}
+button { font-family: inherit; border: none; background: none; cursor: pointer; touch-action: manipulation; }
+img { display: block; }
+
+/* ===== 页面容器（电脑上预览时居中，宽 480px，跟手机一样） ===== */
+#app { max-width: 480px; margin: 0 auto; min-height: 100vh; background: #fbf5ec; box-shadow: 0 0 40px rgba(0,0,0,.45); position: relative; }
+
+/* ===== 顶部店铺信息 ===== */
+.shop-header {
+  background: linear-gradient(160deg, #a8232a 0%, #8c181f 55%, #6e1013 100%);
+  padding: 26px 16px 16px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.shop-header::before {
+  content: "";
+  position: absolute; left: -40px; top: -60px; width: 180px; height: 180px; border-radius: 50%;
+  background: rgba(255, 220, 150, .08);
+}
+.shop-header::after {
+  content: "";
+  position: absolute; right: -50px; bottom: -80px; width: 220px; height: 220px; border-radius: 50%;
+  background: rgba(255, 220, 150, .06);
+}
+.shop-name {
+  font-size: 27px; font-weight: 800; letter-spacing: 3px;
+  color: #f6d992;
+  text-shadow: 0 2px 6px rgba(0,0,0,.35);
+  position: relative; z-index: 1;
+}
+.shop-sub {
+  margin-top: 7px; font-size: 12px; letter-spacing: 5px; color: rgba(246, 217, 146, .75);
+  position: relative; z-index: 1;
+}
+.shop-sub::before, .shop-sub::after { content: "—  "; letter-spacing: 0; }
+.shop-sub::after { content: "  —"; }
+.notice {
+  margin: 15px 4px 2px; padding: 10px 12px;
+  background: #fdf3dd; border: 1px dashed #dcb15f; border-radius: 10px;
+  font-size: 13px; line-height: 1.65; color: #8a4a15; text-align: left;
+  position: relative; z-index: 1;
+}
+.notice b { color: #b03227; }
+
+/* ===== 分类导航（吸顶） ===== */
+#catNav {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; overflow-x: auto; -webkit-overflow-scrolling: touch;
+  gap: 8px; padding: 10px 12px;
+  background: rgba(251, 245, 236, .96);
+  border-bottom: 1px solid #efdfca;
+  scrollbar-width: none;
+}
+#catNav::-webkit-scrollbar { display: none; }
+.nav-pill {
+  flex: 0 0 auto; padding: 7px 15px; border-radius: 999px;
+  font-size: 14px; color: #6b5140; background: #f2e5d2;
+  transition: all .18s;
+}
+.nav-pill.active {
+  background: #a8232a; color: #ffe9bd; font-weight: 700;
+  box-shadow: 0 3px 8px rgba(168, 35, 42, .35);
+}
+
+/* ===== 菜单主体 ===== */
+.cat-section { padding-top: 6px; }
+.cat-title {
+  display: flex; align-items: center; gap: 9px;
+  margin: 16px 14px 11px; font-size: 17px; font-weight: 800; color: #7e1618;
+}
+.cat-title .cat-ico { font-size: 18px; }
+.cat-title::after { content: ""; flex: 1; height: 1px; background: linear-gradient(to right, #e5d3b8, transparent); }
+.cat-title .cat-count { font-size: 11px; font-weight: 400; color: #b49a7d; }
+
+.dish-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 12px; }
+.dish { background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 5px rgba(140, 90, 50, .09); }
+
+.dish-img { position: relative; width: 100%; height: 0; padding-top: 133%; background: #f0e4d2; overflow: hidden; }
+.dish-img img {
+  position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+  object-fit: cover; opacity: 0; transition: opacity .35s;
+}
+.dish-img img.loaded { opacity: 1; }
+.dish-ph {
+  position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: linear-gradient(150deg, #f8ecd6, #f0dcbc);
+}
+.dish-ph .ph-ico { font-size: 52px; }
+.dish-ph .ph-name { margin-top: 8px; font-size: 14px; font-weight: 700; color: #a97f3f; }
+
+.tags { position: absolute; left: 8px; top: 8px; display: flex; gap: 5px; z-index: 2; }
+.tag { padding: 2.5px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700; letter-spacing: 1px; box-shadow: 0 1px 4px rgba(60, 20, 5, .3); }
+.tag-bz { background: linear-gradient(135deg, #f7dd8f, #dfa744); color: #6b3a10; }
+.tag-la { background: #c0392b; color: #fff; }
+.tag-xp { background: #3e9b4f; color: #fff; }
+.tag-ot { background: #7e1618; color: #ffe7b3; }
+
+.dish-info { padding: 9px 10px 11px; }
+.dish-name { font-size: 15px; font-weight: 700; color: #33241a; }
+.dish-desc {
+  margin-top: 4px; font-size: 11.5px; color: #a38d77; line-height: 1.5; min-height: 34px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.dish-foot { margin-top: 7px; display: flex; align-items: center; justify-content: space-between; }
+.dish-price { color: #c0392b; font-size: 12px; font-weight: 700; }
+.dish-price b { font-size: 19px; font-family: "DIN Alternate", tahoma, sans-serif; margin-left: 1px; }
+.dish-price.from { font-size: 12px; }
+.dish-price.from b { font-size: 16px; }
+/* 大小份规格区 */
+.spec-rows { margin-top: 9px; padding-top: 9px; border-top: 1px dashed #ecdcc4; display: flex; flex-direction: column; gap: 8px; }
+.spec-row { display: flex; align-items: center; justify-content: space-between; }
+.spec-row .s-l { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.spec-row .s-lbl { font-size: 13px; font-weight: 600; color: #5a4636; }
+.spec-row .s-pr { font-size: 12px; color: #c0392b; font-weight: 700; }
+.spec-row .s-pr b { font-size: 15px; font-family: "DIN Alternate", tahoma, sans-serif; margin-left: 1px; }
+
+/* 加减按钮 */
+.add-btn {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: linear-gradient(135deg, #eab254, #cf8f2b);
+  color: #fff; font-size: 19px; line-height: 1; font-weight: 700;
+  box-shadow: 0 3px 8px rgba(207, 143, 43, .45);
+  display: flex; align-items: center; justify-content: center; padding-bottom: 2px;
+}
+.stepper { display: flex; align-items: center; gap: 2px; }
+.mini {
+  width: 25px; height: 25px; border-radius: 50%; font-size: 15px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; line-height: 1;
+}
+.mini.sub { border: 1.5px solid #d8c7b2; color: #a8232a; background: #fff; padding-bottom: 1px; }
+.mini.plus { background: linear-gradient(135deg, #eab254, #cf8f2b); color: #fff; padding-bottom: 1px; box-shadow: 0 2px 6px rgba(207,143,43,.4); }
+.qty { min-width: 24px; text-align: center; font-size: 15px; font-weight: 800; color: #33241a; }
+
+/* ===== 底部结算栏 ===== */
+#bottomBar {
+  position: fixed; bottom: 0; left: 0; right: 0; margin: 0 auto; max-width: 480px; z-index: 50;
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px calc(9px + env(safe-area-inset-bottom));
+  background: rgba(43, 16, 10, .97);
+  box-shadow: 0 -4px 16px rgba(40, 10, 5, .35);
+}
+.cart-wrap { position: relative; flex: 0 0 auto; }
+.cart-ico {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: radial-gradient(circle at 30% 25%, #c2483f, #8c181f);
+  border: 2px solid #e9bd6a; font-size: 21px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 4px;
+}
+.cart-badge {
+  position: absolute; right: -6px; top: -6px; min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 999px; background: #ffd257; color: #5a1a08;
+  font-size: 12px; font-weight: 800; line-height: 20px; text-align: center;
+  display: none;
+}
+.cart-badge.on { display: block; }
+.bar-total { flex: 1; color: #f4d9a0; line-height: 1.25; }
+.bar-total .t-label { font-size: 11px; color: #c9a876; }
+.bar-total .t-amt { font-size: 19px; font-weight: 800; color: #ffd257; }
+.bar-total .t-amt small { font-size: 12px; font-weight: 600; }
+#btnConfirm {
+  flex: 0 0 auto; padding: 12px 24px; border-radius: 999px;
+  background: linear-gradient(135deg, #f0bd5e, #d19430);
+  color: #4a1d05; font-size: 16px; font-weight: 800; letter-spacing: 1px;
+  box-shadow: 0 3px 12px rgba(233, 172, 70, .4);
+}
+#btnConfirm:disabled { background: #5f4a3a; color: #a89483; box-shadow: none; }
+.bar-tip { font-size: 11px; color: #b18f66; margin-top: 2px; }
+
+/* 后台可开关：关闭「显示合计金额」时隐藏客人端两处合计 */
+body.hide-total .bar-total, body.hide-total .s-total { display: none; }
+
+/* ===== 确认单底部弹层 ===== */
+#mask { position: fixed; inset: 0; background: rgba(20, 8, 4, .55); z-index: 90; opacity: 0; pointer-events: none; transition: opacity .25s; }
+#mask.show { opacity: 1; pointer-events: auto; }
+#sheet {
+  position: fixed; bottom: 0; left: 0; right: 0; margin: 0 auto; max-width: 480px; z-index: 100;
+  background: #fbf5ec; border-radius: 18px 18px 0 0;
+  max-height: 88vh; display: flex; flex-direction: column;
+  transform: translateY(105%); transition: transform .3s cubic-bezier(.2,.8,.3,1);
+}
+#sheet.show { transform: translateY(0); }
+.sheet-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 15px 16px 11px; border-bottom: 1px solid #efdfca; flex: 0 0 auto;
+}
+.sheet-head h3 { font-size: 17px; font-weight: 800; color: #7e1618; }
+.sheet-head h3::before { content: "📋"; margin-right: 6px; }
+.sheet-head .s-clear { font-size: 13px; color: #a38d77; padding: 4px 6px; }
+.sheet-head .s-close { font-size: 20px; color: #a38d77; padding: 2px 8px; }
+
+.sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 16px 12px; flex: 1 1 auto; }
+.s-row { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px dashed #eee0cb; }
+.s-info { flex: 1; min-width: 0; }
+.s-name { font-size: 14.5px; font-weight: 700; color: #33241a; }
+.s-price { font-size: 12px; color: #a38d77; margin-top: 2px; }
+.s-amt { font-size: 15px; font-weight: 800; color: #c0392b; min-width: 52px; text-align: right; }
+.s-empty { text-align: center; padding: 34px 0 26px; color: #b49a7d; font-size: 14px; }
+
+.sheet-foot { flex: 0 0 auto; border-top: 1px solid #efdfca; background: #fbf5ec; padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); }
+.s-total { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 9px; }
+.s-total .st-l { font-size: 13px; color: #8c7b6e; }
+.s-total .st-r { font-size: 13px; color: #8c7b6e; }
+.s-total .st-r b { font-size: 21px; color: #c0392b; font-family: "DIN Alternate", tahoma, sans-serif; }
+#btnCopy {
+  width: 100%; padding: 13px 0; border-radius: 999px;
+  background: linear-gradient(135deg, #c0392b, #8c181f);
+  color: #ffe9bd; font-size: 16.5px; font-weight: 800; letter-spacing: 2px;
+  box-shadow: 0 4px 14px rgba(168, 35, 42, .4);
+}
+#btnCopy:disabled { background: #cbc0b2; color: #f2ede4; box-shadow: none; }
+.copy-tip { margin-top: 8px; font-size: 11.5px; color: #b49a7d; text-align: center; line-height: 1.5; }
+
+.order-preview {
+  margin-top: 12px; background: #fff; border: 1px dashed #dcb15f; border-radius: 10px;
+  padding: 12px; user-select: text; -webkit-user-select: text;
+}
+.order-preview .op-title { font-size: 12px; color: #b49a7d; margin-bottom: 8px; }
+.order-preview pre {
+  white-space: pre-wrap; word-break: break-all;
+  font-family: inherit; font-size: 13px; line-height: 1.8; color: #4a3a2c;
+}
+
+/* ===== 图片放大查看 ===== */
+#viewer {
+  position: fixed; inset: 0; z-index: 200; background: rgba(12, 5, 2, .93);
+  display: none; align-items: center; justify-content: center; flex-direction: column;
+}
+#viewer.show { display: flex; }
+#viewer img { max-width: 94vw; max-height: 86vh; border-radius: 8px; box-shadow: 0 10px 50px rgba(0,0,0,.6); }
+#viewer .v-hint { margin-top: 14px; font-size: 13px; color: #c9a876; letter-spacing: 2px; }
+
+/* ===== 轻提示 ===== */
+#toast {
+  position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%);
+  width: max-content; max-width: 82vw; z-index: 300;
+  background: rgba(35, 12, 6, .93); color: #ffe9bd;
+  font-size: 14px; line-height: 1.5; padding: 11px 20px; border-radius: 999px;
+  border: 1px solid rgba(233, 189, 106, .4);
+  opacity: 0; pointer-events: none; transition: opacity .25s; text-align: center;
+}
+#toast.show { opacity: 1; }
+/* 复制成功等关键提示：最大号，屏幕居中 */
+#toast.big {
+  bottom: 42%;
+  font-size: 22px; font-weight: 800; line-height: 1.7;
+  padding: 20px 26px; border-radius: 18px; max-width: 86vw;
+  border: 2px solid rgba(255, 210, 87, .75);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .5);
+}
+
+.menu-footer { text-align: center; padding: 26px 0 calc(96px + env(safe-area-inset-bottom)); font-size: 11px; color: #bda88e; line-height: 1.8; }
+body.locked { overflow: hidden; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- 顶部店铺信息 -->
+  <header class="shop-header">
+    <div class="shop-name" id="shopName"></div>
+    <div class="shop-sub">微信预订 · 到店即享</div>
+    <div class="notice" id="shopNotice"></div>
+  </header>
+
+  <!-- 分类导航（吸顶） -->
+  <nav id="catNav"></nav>
+
+  <!-- 菜品列表（JS 根据配置自动生成） -->
+  <main id="menu"></main>
+
+  <div class="menu-footer">
+    菜品图片仅供参考，请以实物为准<br>
+    价格以到店实际结算为准
+  </div>
+</div>
+
+<!-- 底部结算栏 -->
+<div id="bottomBar">
+  <div class="cart-wrap">
+    <div class="cart-ico">🛒</div>
+    <div class="cart-badge" id="cartBadge">0</div>
+  </div>
+  <div class="bar-total">
+    <div class="t-label">已选 <span id="barCount">0</span> 道 · 合计</div>
+    <div class="t-amt"><small>¥</small><span id="barAmt">0</span></div>
+  </div>
+  <button id="btnConfirm" disabled>确认点菜</button>
+</div>
+
+<!-- 确认单弹层 -->
+<div id="mask"></div>
+<div id="sheet">
+  <div class="sheet-head">
+    <h3>确认您的菜单</h3>
+    <div>
+      <button class="s-clear" id="btnClear">清空</button>
+      <button class="s-close" id="btnClose">✕</button>
+    </div>
+  </div>
+  <div class="sheet-body">
+    <div id="sheetList"></div>
+
+    <div class="order-preview">
+      <div class="op-title">↓ 点菜单预览（发送给店家的就是这段文字）</div>
+      <pre id="orderText"></pre>
+    </div>
+  </div>
+  <div class="sheet-foot">
+    <div class="s-total">
+      <span class="st-l">共 <span id="sheetCount">0</span> 道菜</span>
+      <span class="st-r">合计：<b>¥<span id="sheetAmt">0</span></b>（以到店实际结算为准）</span>
+    </div>
+    <button id="btnCopy">一键复制点菜单</button>
+    <div class="copy-tip">复制成功后本页面会自动关闭，回到微信长按粘贴发送给店家<br>若自动复制未成功，页面不会关闭，可长按菜单文字手动复制</div>
+  </div>
+</div>
+
+<!-- 图片放大层 -->
+<div id="viewer">
+  <img id="viewerImg" alt="菜品大图">
+  <div class="v-hint">点 击 任 意 位 置 关 闭</div>
+</div>
+
+<!-- 轻提示 -->
+<div id="toast"></div>
+
+<script>
+/* ═════════════ 以下为页面功能代码，一般不用动 ═════════════ */
+(function () {
+  "use strict";
+  if (typeof DISHES === 'undefined') {
+    document.addEventListener('DOMContentLoaded', function(){
+      document.body.innerHTML = '<div style="padding:48px 20px;font-family:sans-serif;color:#a8232a;text-align:center;line-height:1.9">'
+        + '<h2 style="margin-bottom:12px">菜单未能加载</h2>'
+        + '<p>请确认 <b>menu.js</b> 与 index.html 在同一文件夹；</p>'
+        + '<p>或双击项目里的「打开点菜页.bat」用本地服务打开（可彻底避免浏览器缓存）。</p></div>';
+    });
+    return;
+  }
+
+  var LS_CART = "wxOrderCart_v1";
+  var cart = {};            // { 菜名: 数量 }
+  var sheetOpen = false;
+  var toastTimer = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ---------- 工具 ---------- */
+  function fmt(n) {
+    n = Math.round(n * 100) / 100;
+    return n % 1 === 0 ? String(n) : String(parseFloat(n.toFixed(2)));
+  }
+  function cartCount() { var n = 0, k; for (k in cart) n += cart[k]; return n; }
+  function cartAmt() {
+    var s = 0, k;
+    for (k in cart) { var d = dishMap[k]; if (d) s += d.price * cart[k]; }
+    return Math.round(s * 100) / 100;
+  }
+
+  /* ---------- 初始化数据 ---------- */
+  /* 构建扁平条目表 ITEMS：每道菜的「每个规格」= 一条（普通菜自身即一条）。
+     购物车、总价、订单文本全部基于 ITEMS，大小份天然各自独立计数。 */
+  var ITEMS = [];
+  function specKey(d, s) { return d.name + "（" + s.label + "）"; }
+  DISHES.forEach(function (d) {
+    if (d.suspended) return;   // 挂起的菜（暂时停售）不在客人端出现
+    if (d.specs && d.specs.length) {
+      d.specs.forEach(function (s) {
+        ITEMS.push({ key: specKey(d, s), name: d.name, spec: s.label, price: s.price, cat: d.cat,
+          desc: d.desc || "", tags: d.tags || [], img: (s.img || d.img || "") });
+      });
+    } else {
+      ITEMS.push({ key: d.name, name: d.name, spec: "", price: d.price, cat: d.cat,
+        desc: d.desc || "", tags: d.tags || [], img: d.img || "" });
+    }
+  });
+  var dishMap = {};
+  ITEMS.forEach(function (it) { dishMap[it.key] = it; });
+  var catMap = {};
+  CATEGORIES.forEach(function (c) { catMap[c.id] = c; });
+  document.title = SHOP.name + " · 微信点菜";
+  $("shopName").textContent = SHOP.name;
+  if (SHOP.showTotal === false) document.body.classList.add('hide-total');
+  $("shopNotice").textContent = SHOP.notice;
+
+  /* ---------- 渲染 ---------- */
+  function tagClass(t) {
+    if (t === "招牌") return "tag tag-bz";
+    if (t === "辣") return "tag tag-la";
+    if (t === "新品") return "tag tag-xp";
+    return "tag tag-ot";
+  }
+  function actionHtml(name, qty) {
+    if (!qty) return '<button class="add-btn" data-act="add" data-name="' + name + '">＋</button>';
+    return '<div class="stepper">' +
+      '<button class="mini sub" data-act="sub" data-name="' + name + '">－</button>' +
+      '<span class="qty">' + qty + '</span>' +
+      '<button class="mini plus" data-act="add" data-name="' + name + '">＋</button>' +
+      '</div>';
+  }
+
+  function hasVisibleDish(cid) {
+    return DISHES.some(function (d) { return d.cat === cid && !d.suspended; });
+  }
+  function renderNav() {
+    var html = "";
+    var firstVisible = true;   // 用“第一个可见分类”决定初始高亮（避免首类全停售时无任何高亮）
+    CATEGORIES.forEach(function (c) {
+      if (!hasVisibleDish(c.id)) return;   // 该分类全部挂起则不显示在导航
+      html += '<button class="nav-pill' + (firstVisible ? " active" : "") + '" data-cat="' + c.id + '">' + c.name + '</button>';
+      firstVisible = false;
+    });
+    $("catNav").innerHTML = html;
+  }
+
+  function renderMenu() {
+    var html = "";
+    CATEGORIES.forEach(function (c) {
+      var dishes = DISHES.filter(function (d) { return d.cat === c.id && !d.suspended; });
+      if (!dishes.length) return;
+      html += '<section class="cat-section" id="cat-' + c.id + '">' +
+        '<div class="cat-title"><span class="cat-ico">' + (c.icon || "🍽️") + '</span>' +
+        c.name + '<span class="cat-count">（' + dishes.length + '）</span></div>' +
+        '<div class="dish-grid">';
+      dishes.forEach(function (d) {
+        var mainImg = (d.specs && d.specs.length) ? (d.specs[0].img || d.img) : d.img;
+        var imgPart;
+        if (mainImg) {
+          imgPart = '<img data-src="images/' + mainImg + '" alt="' + d.name + '">';
+        } else {
+          imgPart = '<div class="dish-ph"><div class="ph-ico">' + (c.icon || "🍽️") +
+            '</div><div class="ph-name">' + d.name + '</div></div>';
+        }
+        var tags = "";
+        if (d.tags && d.tags.length) {
+          tags = '<div class="tags">' + d.tags.map(function (t) {
+            return '<span class="' + tagClass(t) + '">' + t + '</span>';
+          }).join("") + '</div>';
+        }
+
+        var footOrSpecs;
+        if (d.specs && d.specs.length) {
+          var rows = d.specs.map(function (s) {
+            var key = specKey(d, s);
+            return '<div class="spec-row">' +
+              '<div class="s-l"><span class="s-lbl">' + s.label + '</span>' +
+              '<span class="s-pr">¥<b>' + fmt(s.price) + '</b></span></div>' +
+              '<div class="act-box" data-actbox="' + key + '">' + actionHtml(key, cart[key] || 0) + '</div>' +
+            '</div>';
+          }).join("");
+          footOrSpecs =
+            '<div class="spec-rows">' + rows + '</div>';
+        } else {
+          footOrSpecs =
+            '<div class="dish-foot">' +
+              '<div class="dish-price">¥<b>' + fmt(d.price) + '</b></div>' +
+              '<div class="act-box" data-actbox="' + d.name + '">' + actionHtml(d.name, cart[d.name] || 0) + '</div>' +
+            '</div>';
+        }
+
+        html += '<div class="dish">' +
+          '<div class="dish-img" data-img="' + d.name + '">' + imgPart + tags + '</div>' +
+          '<div class="dish-info">' +
+            '<div class="dish-name">' + d.name + '</div>' +
+            (d.desc && d.desc.trim() ? '<div class="dish-desc">' + d.desc.trim() + '</div>' : '') +
+            footOrSpecs +
+          '</div></div>';
+      });
+      html += '</div></section>';
+    });
+    $("menu").innerHTML = html;
+
+    // 图片懒加载
+    var imgs = document.querySelectorAll(".dish-img img[data-src]");
+    lazyLoad(imgs);
+  }
+
+  function lazyLoad(imgs) {
+    if (!("IntersectionObserver" in window)) {
+      // 老内核直接全部加载
+      for (var i = 0; i < imgs.length; i++) loadImg(imgs[i]);
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) { loadImg(en.target); io.unobserve(en.target); }
+      });
+    }, { rootMargin: "300px" });
+    for (var j = 0; j < imgs.length; j++) io.observe(imgs[j]);
+  }
+  function loadImg(img) {
+    img.src = img.getAttribute("data-src");
+    img.removeAttribute("data-src");
+    if (img.complete) { img.classList.add("loaded"); }
+    else {
+      img.onload = function () { img.classList.add("loaded"); };
+      img.onerror = function () { img.style.display = "none"; };
+    }
+  }
+
+  /* ---------- 购物车 ---------- */
+  function updateActionBox(name) {
+    var boxes = document.querySelectorAll('[data-actbox="' + name + '"]');
+    for (var i = 0; i < boxes.length; i++) boxes[i].innerHTML = actionHtml(name, cart[name] || 0);
+  }
+  function updateBar() {
+    var n = cartCount(), a = cartAmt();
+    $("barCount").textContent = n;
+    $("barAmt").textContent = fmt(a);
+    $("btnConfirm").disabled = n === 0;
+    var badge = $("cartBadge");
+    badge.textContent = n;
+    badge.className = "cart-badge" + (n > 0 ? " on" : "");
+  }
+  function addDish(name) {
+    cart[name] = (cart[name] || 0) + 1;
+    if (cart[name] > 99) cart[name] = 99;
+    afterCartChange(name);
+  }
+  function subDish(name) {
+    if (!cart[name]) return;
+    cart[name]--;
+    if (cart[name] <= 0) delete cart[name];
+    afterCartChange(name);
+  }
+  function afterCartChange(name) {
+    updateActionBox(name);
+    updateBar();
+    saveCart();
+    if (sheetOpen) renderSheet();
+  }
+  function saveCart() {
+    try { localStorage.setItem(LS_CART, JSON.stringify(cart)); } catch (e) {}
+  }
+  function loadCart() {
+    try {
+      var raw = localStorage.getItem(LS_CART);
+      if (!raw) return;
+      var obj = JSON.parse(raw), k;
+      for (k in obj) {
+        if (dishMap[k] && obj[k] > 0) cart[k] = Math.min(99, Math.floor(obj[k]));
+      }
+    } catch (e) {}
+  }
+  function clearCart() {
+    var k;
+    for (k in cart) { delete cart[k]; updateActionBox(k); }
+    updateBar();
+    saveCart();
+    if (sheetOpen) renderSheet();
+  }
+
+  /* ---------- 确认单弹层 ---------- */
+  function renderSheet() {
+    var html = "", names = [];
+    // 按菜单顺序列出
+    ITEMS.forEach(function (it) { if (cart[it.key]) names.push(it.key); });
+    if (!names.length) {
+      html = '<div class="s-empty">🍮 您还没有选菜，去菜单里挑几道吧～</div>';
+    } else {
+      names.forEach(function (k) {
+        var it = dishMap[k], q = cart[k];
+        html += '<div class="s-row">' +
+          '<div class="s-info"><div class="s-name">' + k + '</div>' +
+          '<div class="s-price">单价 ¥' + fmt(it.price) + '</div></div>' +
+          '<div class="act-box" data-actbox="' + k + '">' + actionHtml(k, q) + '</div>' +
+          '<div class="s-amt">¥' + fmt(it.price * q) + '</div>' +
+          '</div>';
+      });
+    }
+    $("sheetList").innerHTML = html;
+    $("sheetCount").textContent = cartCount();
+    $("sheetAmt").textContent = fmt(cartAmt());
+    $("btnCopy").disabled = names.length === 0;
+    $("orderText").textContent = buildOrderText();
+  }
+  function openSheet() {
+    if (cartCount() === 0) return;
+    sheetOpen = true;
+    renderSheet();
+    $("mask").classList.add("show");
+    $("sheet").classList.add("show");
+    document.body.classList.add("locked");
+  }
+  function closeSheet() {
+    sheetOpen = false;
+    $("mask").classList.remove("show");
+    $("sheet").classList.remove("show");
+    document.body.classList.remove("locked");
+  }
+
+  /* ---------- 生成点菜单文本 ---------- */
+  function buildOrderText() {
+    var L = [];
+    L.push("【" + SHOP.name + "】微信点菜单");
+    L.push("────────────────");
+
+    // 只列菜名与数量：不输出分类标题，也不输出每道菜的单价/小计（合计仍在末尾）
+    var idx = 0;
+    ITEMS.forEach(function (it) {
+      if (cart[it.key]) {
+        idx++;
+        L.push(idx + "、" + it.key + " ×" + cart[it.key]);
+      }
+    });
+
+    if (SHOP.showTotal !== false) {
+      L.push("────────────────");
+      L.push("合计：¥" + fmt(cartAmt()) + "（以到店实际结算为准）");
+    }
+    return L.join("\n");
+  }
+
+  /* ---------- 复制（兼容微信内置浏览器） ---------- */
+  function execCopy(text) {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "-9999px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    var ok = false;
+    try {
+      if (/ipad|iphone|ipod/i.test(navigator.userAgent)) {
+        var range = document.createRange();
+        range.selectNodeContents(ta);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        ta.setSelectionRange(0, text.length);
+      } else {
+        ta.select();
+      }
+      ok = document.execCommand("copy");
+    } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    try { window.getSelection().removeAllRanges(); } catch (e) {}
+    return ok;
+  }
+  /* 复制成功后自动关闭页面：微信内置浏览器调用微信的关闭接口；
+     普通浏览器关不掉就保持原样，不影响使用。
+     延迟 5 秒再关，留足时间看清"已复制"提示 */
+  function tryClosePage() {
+    setTimeout(function () {
+      if (typeof WeixinJSBridge !== "undefined") {
+        try { WeixinJSBridge.call("closeWindow"); } catch (e) {}
+      }
+      try { window.close(); } catch (e) {}
+    }, 5000);
+  }
+  function copyOrder() {
+    var text = buildOrderText();
+    var done = function (ok) {
+      if (ok) {
+        showToast("✓ 已复制！点菜页面稍后自动关闭，关闭后在微信商家的对话框内粘贴发送即可", 6600, true);
+        tryClosePage();  // 复制成功，提示看完后自动关闭页面
+      } else {
+        // 手动兜底：选中预览文字让客人长按复制
+        var pre = $("orderText");
+        var range = document.createRange();
+        range.selectNodeContents(pre);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        showToast("自动复制未成功，请长按选中文字手动复制", 6600, true);
+      }
+    };
+    if (navigator.clipboard && location.protocol === "https:") {
+      navigator.clipboard.writeText(text).then(function () { done(true); })
+        .catch(function () { done(execCopy(text)); });
+    } else {
+      done(execCopy(text));
+    }
+  }
+
+  /* ---------- 轻提示 ---------- */
+  function showToast(msg, ms, big) {
+    var t = $("toast");
+    t.textContent = msg;
+    t.className = "show" + (big ? " big" : "");
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove("show"); }, ms || 2600);
+  }
+
+  /* ---------- 图片放大 ---------- */
+  function showViewer(src) {
+    $("viewerImg").src = src;
+    $("viewer").classList.add("show");
+    document.body.classList.add("locked");
+  }
+  function hideViewer() {
+    $("viewer").classList.remove("show");
+    document.body.classList.remove("locked");
+  }
+
+  /* ---------- 分类导航跳转 + 滚动高亮 ---------- */
+  function jumpTo(catId) {
+    var el = document.getElementById("cat-" + catId);
+    if (!el) return;
+    var navH = $("catNav").offsetHeight;
+    var y = el.getBoundingClientRect().top + window.pageYOffset - navH - 6;
+    try { window.scrollTo({ top: Math.max(y, 0), behavior: "smooth" }); }
+    catch (e) { window.scrollTo(0, Math.max(y, 0)); }
+  }
+  var spyTimer = null;
+  function onScroll() {
+    if (spyTimer) return;
+    spyTimer = setTimeout(function () {
+      spyTimer = null;
+      var navH = $("catNav").offsetHeight + 40;
+      var cur = null;
+      var sections = document.querySelectorAll(".cat-section");
+      for (var i = 0; i < sections.length; i++) {
+        if (sections[i].getBoundingClientRect().top <= navH) {
+          cur = sections[i].id.replace("cat-", "");
+        }
+      }
+      if (!cur && sections.length) cur = sections[0].id.replace("cat-", "");
+      var pills = document.querySelectorAll(".nav-pill");
+      for (var j = 0; j < pills.length; j++) {
+        var isCur = pills[j].getAttribute("data-cat") === cur;
+        pills[j].className = "nav-pill" + (isCur ? " active" : "");
+        if (isCur) {
+          var nav = $("catNav");
+          nav.scrollLeft = pills[j].offsetLeft - nav.offsetWidth / 2 + pills[j].offsetWidth / 2;
+        }
+      }
+    }, 80);
+  }
+
+  /* ---------- 事件绑定（事件委托，统一处理） ---------- */
+  document.addEventListener("click", function (e) {
+    var el;
+    // 加/减菜
+    el = e.target.closest ? e.target.closest("[data-act]") : null;
+    if (el) {
+      var name = el.getAttribute("data-name");
+      if (el.getAttribute("data-act") === "add") addDish(name); else subDish(name);
+      return;
+    }
+    // 分类导航
+    el = e.target.closest ? e.target.closest(".nav-pill") : null;
+    if (el) { jumpTo(el.getAttribute("data-cat")); return; }
+    // 菜品图片放大（无图菜品点击不弹空白查看层）
+    el = e.target.closest ? e.target.closest(".dish-img") : null;
+    if (el) {
+      var img = el.querySelector("img");
+      if (img && img.getAttribute("src")) { showViewer(img.getAttribute("src")); }
+      return;
+    }
+  });
+
+  $("btnConfirm").addEventListener("click", openSheet);
+  $("btnClose").addEventListener("click", closeSheet);
+  $("mask").addEventListener("click", closeSheet);
+  $("btnCopy").addEventListener("click", copyOrder);
+  $("btnClear").addEventListener("click", function () {
+    if (cartCount() === 0) return;
+    if (confirm("确定清空已选的所有菜品吗？")) clearCart();
+  });
+  $("viewer").addEventListener("click", hideViewer);
+  window.addEventListener("scroll", onScroll, { passive: true });
+
+  /* ---------- 启动 ---------- */
+  loadCart();
+  renderNav();
+  renderMenu();
+  updateBar();
+})();
+</script>
+</body>
+</html>
